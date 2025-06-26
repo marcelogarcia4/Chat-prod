@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Corrected IDs to match HTML
     const chatWindow = document.getElementById('chat-window');
     const userInput = document.getElementById('user-input');
     const sendButton = document.getElementById('send-button');
@@ -7,8 +8,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const productSpinner = document.getElementById('product-spinner');
     const productErrorMessage = document.getElementById('product-error-message');
 
-    const CHAT_API_URL = '/api/chat';
-    const PRODUCT_SEARCH_API_URL = '/api/search-products';
+    // Corrected API URLs to match Flask backend port
+    const CHAT_API_URL = 'http://localhost:5000/api/chat';
+    const PRODUCT_SEARCH_API_URL = 'http://localhost:5000/api/search-products';
 
     let conversationHistory = [];
 
@@ -18,9 +20,10 @@ document.addEventListener('DOMContentLoaded', () => {
         messageElement.classList.add('chat-message', sender === 'user' ? 'user-message' : 'ai-message');
 
         // Sanitize message content before inserting as HTML (basic sanitization)
-        const Txt = document.createElement('textarea');
-        Txt.innerHTML = message;
-        messageElement.innerHTML = Txt.value.replace(/\n/g, '<br>'); // Replace newlines with <br> for display
+        // Using DOMParser for robust HTML sanitization is better for production
+        const tempDiv = document.createElement('div');
+        tempDiv.textContent = message; // Use textContent to prevent XSS
+        messageElement.innerHTML = tempDiv.innerHTML.replace(/\n/g, '<br>'); // Replace newlines with <br> for display
 
         chatWindow.appendChild(messageElement);
         chatWindow.scrollTop = chatWindow.scrollHeight; // Auto-scroll to bottom
@@ -45,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function extractSource(productUrl) {
-        if (!productUrl) return 'Otro';
+        if (!productUrl) return 'Other'; // Changed 'Otro' to 'Other' for consistency
         try {
             const url = new URL(productUrl);
             const hostname = url.hostname.toLowerCase();
@@ -60,7 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const domainParts = hostname.replace(/^www\./, '').split('.');
             return domainParts[0].charAt(0).toUpperCase() + domainParts[0].slice(1);
         } catch (e) {
-            return 'Otro';
+            return 'Other';
         }
     }
 
@@ -74,6 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
         userInput.value = '';
         showChatSpinner(true);
         hideProductError(); // Hide previous product errors
+        productDisplayArea.innerHTML = ''; // Clear previous products on new chat message
 
         try {
             const response = await fetch(CHAT_API_URL, {
@@ -89,12 +93,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const data = await response.json();
 
-            displayMessage('ai', data.reply);
-            conversationHistory.push({ role: 'assistant', content: data.reply });
+            // Only display AI reply if it's not a pure search action JSON
+            if (!(data.action && data.action.action === 'search' && data.action.keywords)) {
+                 displayMessage('ai', data.reply);
+                 conversationHistory.push({ role: 'assistant', content: data.reply });
+            } else {
+                 // If it's a search action, AI might have sent "Okay, searching now!" or similar.
+                 // We add that to history, but might not display it explicitly if the search starts immediately.
+                 // For now, let's keep it simple and assume the backend sends a friendly text reply for search initiation.
+                 // Or, you can explicitly display something like:
+                 displayMessage('ai', "Okay, I'm searching for products based on your request!");
+                 conversationHistory.push({ role: 'assistant', content: data.reply || "Okay, I'm searching for products based on your request!" }); // Add the actual AI reply for history
+            }
+
 
             if (data.action && data.action.action === 'search' && data.action.keywords) {
                 // AI indicated a search action
-                productDisplayArea.innerHTML = ''; // Clear previous products before new search
                 await searchProducts(data.action.keywords);
             }
 
@@ -126,8 +140,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(errorData.error || `Product API error: ${response.status}`);
             }
 
-            const products = await response.json();
-            displayProducts(products);
+            const productsData = await response.json(); // This should now be the array of products or empty array
+
+            displayProducts(productsData);
 
         } catch (error) {
             console.error('Error fetching products:', error);
@@ -138,27 +153,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Product Display ---
-    function displayProducts(productsData) {
+    function displayProducts(products) { // Renamed from productsData to products for clarity
         productDisplayArea.innerHTML = ''; // Clear previous products or loading messages
         hideProductError();
 
-        if (!productsData || productsData.length === 0) {
+        if (!products || products.length === 0) {
             showProductError('No products found matching your criteria. Try rephrasing your request or being more specific.');
             return;
         }
 
-        productsData.forEach(product => {
+        products.forEach(product => {
             const productCard = `
                 <div class="col-md-4 col-sm-6 mb-4">
-                    <div class="card product-card">
-                        <img src="${product.product_photo || 'https://via.placeholder.com/200x150.png?text=No+Image'}" class="card-img-top" alt="${product.product_title}">
+                    <div class="card product-card h-100">
+                        <img src="${(product.product_photos && product.product_photos[0]) || 'https://via.placeholder.com/200x150.png?text=No+Image'}" class="card-img-top" alt="${product.product_title}">
                         <div class="card-body">
                             <h5 class="card-title" title="${product.product_title}">${product.product_title}</h5>
                             <p class="card-text price">${product.offer && product.offer.price ? product.offer.price : 'Price not available'}</p>
                             <p class="card-text source">Source: ${extractSource(product.offer ? product.offer.offer_page_url : product.product_url)}</p>
                         </div>
                         <div class="card-footer text-center">
-                             <a href="${product.offer ? product.offer.offer_page_url : product.product_url}" target="_blank" class="btn btn-success w-100">View Product</a>
+                             <a href="${product.offer ? product.offer.offer_page_url : product.product_url || '#'}" target="_blank" class="btn btn-success w-100">View Product</a>
                         </div>
                     </div>
                 </div>
