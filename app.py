@@ -4,6 +4,10 @@ import requests
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
+import logging # Import logging module
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 load_dotenv()
 
@@ -23,6 +27,7 @@ def index():
 @app.route('/api/chat', methods=['POST'])
 def chat_with_ai():
     if not DEEPSEEK_API_KEY:
+        app.logger.error("Deepseek API key not configured")
         return jsonify({"error": "Deepseek API key not configured"}), 500
 
     try:
@@ -30,6 +35,7 @@ def chat_with_ai():
         messages = data.get('messages')
 
         if not messages:
+            app.logger.warning("No messages provided in chat request")
             return jsonify({"error": "No messages provided"}), 400
 
         system_prompt = {
@@ -40,6 +46,7 @@ def chat_with_ai():
                 "When you have enough information to suggest products, you MUST respond "
                 "ONLY with a JSON object in the following format: "
                 "{\"action\": \"search\", \"keywords\": [\"keyword1\", \"keyword2\", \"feature\"]}. "
+                "The keywords array should contain relevant search terms based on user's request. "
                 "Do not include any other text or explanation before or after the JSON object if you are outputting the search action. "
                 "Otherwise, if you need more information or want to clarify, continue the conversation naturally. "
                 "Do not ask if the user is ready to search, determine it yourself and then provide the JSON."
@@ -59,45 +66,53 @@ def chat_with_ai():
         }
 
         response = requests.post(DEEPSEEK_API_URL, headers=headers, json=payload)
-        response.raise_for_status()  # Raise an exception for HTTP errors
+        response.raise_for_status()  # Raise an exception for HTTP errors (4xx or 5xx)
 
         ai_response = response.json()
         ai_message_content = ai_response.get("choices", [{}])[0].get("message", {}).get("content", "")
 
-        # Attempt to parse the AI's message as JSON for a search action
+        app.logger.info(f"Deepseek raw response content: {ai_message_content}")
+
         action = None
+        reply_to_user = ai_message_content # Default reply is the AI's content
+
         try:
-            # Check if the message content is a valid JSON string
+            # Check if the message content is a valid JSON string for a search action
+            # It's good to check if it starts and ends with curly braces for initial check
             if ai_message_content.strip().startswith("{") and ai_message_content.strip().endswith("}"):
                 parsed_action = json.loads(ai_message_content)
-                if isinstance(parsed_action, dict) and parsed_action.get("action") == "search" and "keywords" in parsed_action:
+                if isinstance(parsed_action, dict) and \
+                   parsed_action.get("action") == "search" and \
+                   isinstance(parsed_action.get("keywords"), list) and \
+                   len(parsed_action["keywords"]) > 0:
                     action = parsed_action
-                    # If it's an action, we don't want to send the JSON as a message to the user
-                    ai_message_content = "Okay, I'll search for that now!"
+                    reply_to_user = "Okay, I'm searching for products based on your request now!" # A friendly message to user
         except json.JSONDecodeError:
-            # Not a JSON action, so it's a regular text message
+            # Not a JSON action, so it's a regular text message, continue with default reply_to_user
             pass
 
         return jsonify({
-            "reply": ai_message_content,
+            "reply": reply_to_user, # Send the friendly message or regular chat reply
             "action": action
         })
 
     except requests.exceptions.RequestException as e:
-        app.logger.error(f"Deepseek API request error: {e}")
+        app.logger.error(f"Deepseek API request error: {e.response.text if e.response else e}")
         return jsonify({"error": f"Error communicating with AI: {str(e)}"}), 500
     except Exception as e:
-        app.logger.error(f"Error in /api/chat: {e}")
+        app.logger.error(f"Unexpected error in /api/chat: {e}")
         return jsonify({"error": str(e)}), 500
 
 
 @app.route('/api/search-products', methods=['GET'])
 def search_products_api():
     if not RAPIDAPI_KEY:
+        app.logger.error("RapidAPI key not configured")
         return jsonify({"error": "RapidAPI key not configured"}), 500
 
     query = request.args.get('q')
     if not query:
+        app.logger.warning("Search query (q) parameter is missing")
         return jsonify({"error": "Search query (q) parameter is required"}), 400
 
     headers = {
@@ -109,7 +124,7 @@ def search_products_api():
         "q": query,
         "country": "us",
         "language": "en",
-        "page": "1"
+        "page": "1" # For simplicity, always fetch first page. Extend for pagination.
     }
 
     try:
@@ -117,27 +132,31 @@ def search_products_api():
         response.raise_for_status() # Raise an exception for HTTP errors
 
         product_data = response.json()
-        if product_data.get("status") == "OK" and product_data.get("data"):
-             return jsonify(product_data["data"])
-        elif product_data.get("status") == "OK" and not product_data.get("data"):
-            return jsonify([]) # No products found
-        else:
-            return jsonify({"error": "Failed to fetch products", "details": product_data.get("message", "Unknown error")}), 500
+        
+        # CORRECTED: Access 'products' list which is inside 'data'
+        products = product_data.get("data", {}).get("products", [])
+
+        if not products:
+            app.logger.info(f"No products found for query: {query}")
+            return jsonify([]) # Return an empty list if no products
+
+        return jsonify(products) # Return the list of products
 
     except requests.exceptions.RequestException as e:
-        app.logger.error(f"RapidAPI request error: {e}")
-        # Try to parse error response from RapidAPI if available
+        app.logger.error(f"RapidAPI request error: {e.response.text if e.response else e}")
         error_details = "Error communicating with product search API."
-        try:
-            error_resp = e.response.json()
-            if "message" in error_resp:
-                error_details = error_resp["message"]
-        except: # If parsing response fails, use generic error
-            pass
+        if e.response is not None:
+            try:
+                error_resp = e.response.json()
+                if "message" in error_resp:
+                    error_details = error_resp["message"]
+            except json.JSONDecodeError:
+                error_details = f"Product API returned non-JSON error: {e.response.text}"
         return jsonify({"error": error_details}), 500
     except Exception as e:
-        app.logger.error(f"Error in /api/search-products: {e}")
+        app.logger.error(f"Unexpected error in /api/search-products: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
+    # Ensure you are in 'debug=True' ONLY for development, not production
     app.run(debug=True, port=5000)
