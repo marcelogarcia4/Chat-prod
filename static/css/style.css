@@ -1,0 +1,127 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f4f7f6;
+    color: #333;
+}
+
+header h1 {
+    font-weight: 300;
+}
+
+#chat-window {
+    height: 400px;
+    overflow-y: auto;
+    background-color: #ffffff;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.chat-message {
+    padding: 10px 15px;
+    margin-bottom: 10px;
+    border-radius: 15px;
+    max-width: 75%;
+    word-wrap: break-word;
+}
+
+.user-message {
+    background-color: #007bff;
+    color: white;
+    margin-left: auto;
+    border-bottom-right-radius: 0;
+}
+
+.ai-message {
+    background-color: #e9ecef;
+    color: #333;
+    margin-right: auto;
+    border-bottom-left-radius: 0;
+}
+
+#user-input {
+    border-right: 0;
+    border-color: #ced4da;
+}
+#user-input:focus {
+    box-shadow: none;
+    border-color: #007bff;
+}
+
+#send-button {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+/* Product Card Styling */
+.product-card {
+    transition: transform .2s ease-in-out, box-shadow .2s ease-in-out;
+    height: 100%; /* Ensure cards in a row have the same height if content differs */
+}
+
+.product-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+}
+
+.product-card img {
+    max-height: 200px;
+    object-fit: contain; /* Changed from 'cover' to 'contain' to see whole image */
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.card-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    /* Clamp title to 2 lines */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2; /* number of lines to show */
+    -webkit-box-orient: vertical;
+    min-height: 2.6em; /* Approximate height for 2 lines */
+}
+
+.card-text .price {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #28a745;
+}
+
+.card-text .source {
+    font-size: 0.9rem;
+    color: #6c757d;
+}
+
+.card-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.card-footer {
+    background-color: transparent;
+    border-top: none;
+}
+
+/* Spinner alignment */
+#chat-spinner .spinner-border,
+#product-spinner .spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
+/* Ensure product display area is not too crowded */
+#product-display-area .col-md-4,
+#product-display-area .col-sm-6 {
+    margin-bottom: 1.5rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    #chat-window {
+        height: 300px;
+    }
+    .chat-message {
+        max-width: 90%;
+    }
+}
